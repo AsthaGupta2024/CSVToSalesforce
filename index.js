@@ -1,11 +1,13 @@
 require("dotenv").config();
 const axios = require("axios");
 const express = require("express");
+const path = require("path");
+const fs = require("fs");
 const app = express();
 app.use(express.json());
 
 // Salesforce OAuth credentials
-const HUB_ACCESS_TOKEN = process.env.ACCESS_TOKEN;
+const DESTINATION_ACCESS_TOKEN = process.env.DESTINATION_ACCESS_TOKEN;
 const BASE_URI = process.env.BASE_URI;
 const SALESFORCE_CLIENT_ID = process.env.SALESFORCE_CLIENT_ID;
 const SALESFORCE_CLIENT_SECRET = process.env.SALESFORCE_CLIENT_SECRET;
@@ -21,10 +23,10 @@ const hsHelpers = require('./hshelpers.js');
 app.get("/fetch-leads", async (req, res) => {
   try {
     // by using csv or json 
-    console.log("hiiiiii");
-    const filePath = require("path").join(__dirname, "files", "Leadupp.json");
+    const filePath = require("path").join(__dirname, "files", "Lead.json");
     console.log("filePath:", filePath);
     const datas = await hsHelpers.readDataFromJson(filePath);  // Await the file reading function
+   console.log("datas",datas);
     const processedContacts1 = await hsHelpers.syncContactData(datas);
   
     // const getNotes = await processNotes(data,access_token, instance_url);
@@ -43,39 +45,35 @@ app.get("/fetch-leads", async (req, res) => {
 });
 
 
-//endpoint to get  company(account)
 app.get("/fetch-account", async (req, res) => {
   try {
-
-    console.log("company");
-    const filePath = require("path").join(__dirname, "files", "account.json");
-    console.log("filePath:", filePath);
-    const datas = await hsHelpers.readDataFromJson(filePath);  // Await the file reading function
-
+    const filePath = require("path").join(__dirname, "files", "accounts.json");
+    const accounts = await hsHelpers.readDataFromJson(filePath);    
+    hsHelpers.syncCompanyData(accounts)
+    
     // const data = await fetchAllCompanys(access_token, instance_url);
     // const getNotes = await processNotes(data,access_token, instance_url);
-    res.json({ message: "Salesforce token fetched successfully", access_token, instance_url });
+
+    res.status(201).json({ message: "Accounts data synced successfully", error: null})
   } catch (error) {
-    console.error("Error fetching Salesforce token:", error.message);
-
-    if (!res.headersSent) {
-      res.status(500).json({
-        message: "Error fetching Salesforce token",
-        error: error.message,
-      });
-    }
+    console.error("Error syncing accounts data:", error.message)
+    res.status(500).json({
+      message: "Error syncing accounts data",
+      error: error.message,
+    })
   }
-});
-
+})
 
 //endpoint to get  deal(opportunity)
 app.get("/fetch-opportunity", async (req, res) => {
   try {
-    const data = await fetchAllOpportunity(access_token, instance_url);
-    // const getNotes = await processNotes(data,access_token, instance_url);
+    const filePath = require("path").join(__dirname, "files", "Opportunity.json");
+    const datas = await hsHelpers.readDataFromJson(filePath); 
+    console.log("datas",datas)
+    const processedContacts1 = await hsHelpers.syncDealData(datas);    // const getNotes = await processNotes(data,access_token, instance_url);
     // console.log("getNotes",getNotes);
     // const getEmail = await processEmail(data, access_token, instance_url);
-    const getFiles = await fetchOpportunityDocumentAndFile(data, access_token, instance_url);
+    // const getFiles = await fetchOpportunityDocumentAndFile(data, access_token, instance_url);
     res.json({ message: "Salesforce token fetched successfully", access_token, instance_url });
   } catch (error) {
     console.error("Error fetching Salesforce token:", error.message);
@@ -89,75 +87,197 @@ app.get("/fetch-opportunity", async (req, res) => {
   }
 });
 
-async function fetchAllOpportunity(access_token, instance_url) {
-  let allOpportunity = [];
-  let url = `${instance_url}/services/data/v52.0/query?q=SELECT+Id,Name+FROM+Opportunity`;
-  while (url) {
-      const response = await axios.get(url, {
-          headers: {
-              Authorization: `Bearer ${access_token}`
-          }
-      });  
+app.get("/fetch-lead-chatters", async (req, res) => {
+  const folderPath = path.join(__dirname, "files", "LeadChatters");
 
-      const { records, done, nextRecords } = response.data; 
-
-      allOpportunity = allOpportunity.concat(records);
-     
-      url = done ? null : `${instance_url}/services/data/v52.0/query?q=SELECT+Id,Name+FROM+Opportunity&${nextRecords}`;
-    }
-  // console.log("allOpportunity:", allOpportunity);
-  return allOpportunity;
-}
-
-
-async function processNotes(datas, access_token, instance_url) {
-  for (const data of datas) {
-      const notes = await fetchNotes(data.Id, access_token, instance_url);
-
-      // Save each note to the database or handle as needed
-      // for (const note of notes) {
-      //     const noteData = new Note({
-      //         contactId: contact.Id, // reference to the contact in your DB
-      //         title: note.Title,
-      //         body: note.Body,
-      //     });
-      //     await noteData.save();
-      //     console.log(`Note for contact ${contact.Id} saved successfully.`);
-
-      //     // Sync only the current note with HubSpot
-      //     await syncNotesWithHubSpot(contact.Id, note);
-      // }
-  }
-}
-async function fetchNotes(dataId, access_token, instance_url) {
   try {
-    // Step 1: Fetch ContentDocument IDs linked to the Contact
-    const contentDocLinkUrl = `${instance_url}/services/data/v52.0/query?q=SELECT+ContentDocumentId+FROM+ContentDocumentLink+WHERE+LinkedEntityId='${dataId}'`;
-    const docLinkResponse = await axios.get(contentDocLinkUrl, {
-      headers: { Authorization: `Bearer ${access_token}` },
-    });
+    const files = fs.readdirSync(folderPath).slice(0, 6);
+    console.log("Files and Folders inside:", folderPath);
 
-    const contentDocumentIds = docLinkResponse.data.records.map(record => `'${record.ContentDocumentId}'`);
+    for (const file of files) {
+      const fullPath = path.join(folderPath, file);
+      const stats = fs.statSync(fullPath);
 
-    if (contentDocumentIds.length === 0) {
-      console.log(`No ComposeText notes found for contact ${dataId}`);
-      return [];
+      if (stats.isDirectory()) {
+        console.log("Folder (ContactId):", file);
+        const contactId = file; // Folder name is the Salesforce contactId
+        console.log("ContactId:", contactId);
+
+
+        const url = `https://api.hubapi.com/crm/v3/objects/contacts/search`;
+        const data = {
+          filterGroups: [
+            {
+              filters: [{ propertyName: "sf_lead_id", operator: "EQ", value: contactId }],
+            },
+          ],
+        };
+
+        const response = await axios.post(url, data, {
+          headers: {
+            Authorization: `Bearer ${DESTINATION_ACCESS_TOKEN}`,
+            "Content-Type": "application/json",
+          },
+        });
+
+        const contactExists = response.data.results.length > 0;
+        const ObjectId = response.data.results[0]?.id;
+
+        console.log("contactExists",response.data.results);
+        console.log("contactId", contactId);
+        console.log("ObjectId", ObjectId);
+        if (contactExists) {
+          const innerFiles = fs.readdirSync(fullPath);
+          console.log(`  Files inside ${file}:`, innerFiles);
+
+          for (const innerFile of innerFiles) {
+            const noteContent = fs.readFileSync(path.join(fullPath, innerFile), "utf8");
+            console.log("noteContent", noteContent);
+            await hsHelpers.createNoteInHubSpot(ObjectId, noteContent,'contactIds');
+          }
+        } else {
+          console.log(`Contact ID ${ObjectId} not found in HubSpot`);
+        }
+      } else {
+        console.log("Skipping file:", file);
+      }
+    }
+    res.json({ message: "Successfully processed opportunity chatter files" });
+  } catch (error) {
+    console.error("Error processing opportunity chatter files:", error.message);
+  }
+});
+
+app.get("/fetch-account-chatters", async (req, res) => {
+  const folderPath = path.join(__dirname, "files", "AccountChatters");
+
+  try {
+    const files = fs.readdirSync(folderPath).slice(0, 6);
+    console.log("Files and Folders inside:", folderPath);
+
+    for (const file of files) {
+      const fullPath = path.join(folderPath, file);
+      const stats = fs.statSync(fullPath);
+
+      if (stats.isDirectory()) {
+        console.log("Folder (CompanyId):", file);
+        const companyId = file; // Folder name is the Salesforce Account (Company) ID
+        console.log("CompanyId:", companyId);
+
+        // Search HubSpot for the company using Salesforce Account ID
+        const url = `https://api.hubapi.com/crm/v3/objects/companies/search`;
+        const data = {
+          filterGroups: [
+            {
+              filters: [{ propertyName: "sf_account_id", operator: "EQ", value: companyId }],
+            },
+          ],
+        };
+
+        const response = await axios.post(url, data, {
+          headers: {
+            Authorization: `Bearer ${DESTINATION_ACCESS_TOKEN}`,
+            "Content-Type": "application/json",
+          },
+        });
+
+        const companyExists = response.data.results.length > 0;
+        const ObjectId = response.data.results[0]?.id;
+
+        console.log("companyExists", response.data.results);
+        console.log("CompanyId", companyId);
+        console.log("ObjectId", ObjectId);
+
+        if (companyExists) {
+          const innerFiles = fs.readdirSync(fullPath);
+          console.log(`  Files inside ${file}:`, innerFiles);
+
+          for (const innerFile of innerFiles) {
+            const noteContent = fs.readFileSync(path.join(fullPath, innerFile), "utf8");
+            console.log("noteContent", noteContent);
+            await hsHelpers.createNoteInHubSpot(ObjectId, noteContent, 'companyIds'); // Sync notes to company
+          }
+        } else {
+          console.log(`Company ID ${ObjectId} not found in HubSpot`);
+        }
+      } else {
+        console.log("Skipping file:", file);
+      }
     }
 
-    // Step 2: Fetch ContentVersion records using ContentDocumentId
-    const contentVersionUrl = `${instance_url}/services/data/v52.0/query?q=SELECT+Id,Title,VersionData+FROM+ContentVersion+WHERE+ContentDocumentId+IN+(${contentDocumentIds.join(",")})`;
-    const noteResponse = await axios.get(contentVersionUrl, {
-      headers: { Authorization: `Bearer ${access_token}` },
-    });
-
-    console.log(`Notes for data ${dataId}:`, noteResponse.data.records);
-    return noteResponse.data.records; // Returns an array of ComposeText notes
-
+    res.json({ message: "Successfully processed account chatter files" });
   } catch (error) {
-    console.error(`Error fetching notes for data ${dataId}:`, error.response ? error.response.data : error.message);
-    return [];
+    console.error("Error processing account chatter files:", error.message);
   }
-}
+});
+
+app.get("/fetch-opportunity-chatters", async (req, res) => {
+  const folderPath = path.join(__dirname, "files", "OpportunityChatters");
+
+  try {
+    const files = fs.readdirSync(folderPath).slice(0, 6);
+    console.log("Files and Folders inside:", folderPath);
+
+    for (const file of files) {
+      const fullPath = path.join(folderPath, file);
+      const stats = fs.statSync(fullPath);
+
+      if (stats.isDirectory()) {
+        console.log("Folder (DealId):", file);
+        const dealId = file; // Folder name is the Salesforce Deal ID
+        console.log("DealId:", dealId);
+
+        // Search HubSpot for the deal using Salesforce Opportunity ID
+        const url = `https://api.hubapi.com/crm/v3/objects/deals/search`;
+        const data = {
+          filterGroups: [
+            {
+              filters: [{ propertyName: "sf_opportunity_id", operator: "EQ", value: dealId }],
+            },
+          ],
+        };
+
+        const response = await axios.post(url, data, {
+          headers: {
+            Authorization: `Bearer ${DESTINATION_ACCESS_TOKEN}`,
+            "Content-Type": "application/json",
+          },
+        });
+
+        const dealExists = response.data.results.length > 0;
+        const ObjectId = response.data.results[0]?.id;
+
+        console.log("dealExists", response.data.results);
+        console.log("DealId", dealId);
+        console.log("ObjectId", ObjectId);
+
+        if (dealExists) {
+          const innerFiles = fs.readdirSync(fullPath);
+          console.log(`  Files inside ${file}:`, innerFiles);
+
+          for (const innerFile of innerFiles) {
+            const noteContent = fs.readFileSync(path.join(fullPath, innerFile), "utf8");
+            console.log("noteContent", noteContent);
+            await hsHelpers.createNoteInHubSpot(ObjectId, noteContent, 'dealIds'); // Sync notes to deal
+          }
+        } else {
+          console.log(`Deal ID ${ObjectId} not found in HubSpot`);
+        }
+      } else {
+        console.log("Skipping file:", file);
+      }
+    }
+
+    res.json({ message: "Successfully processed deal chatter files" });
+  } catch (error) {
+    console.error("Error processing deal chatter files:", error.message);
+  }
+});
+
+
+
+
+
 
 
 async function processEmail(contacts, access_token, instance_url) {
