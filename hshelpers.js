@@ -429,7 +429,7 @@ async function createNoteInHubSpot(objectId, noteContent, objectType) {
           body: noteContent.replace(/<p>/g, "").replace(/<\/p>/g, "\n"), // Remove <p> tags and replace with newline
           
         },
-
+       
       },
       {
         headers: {

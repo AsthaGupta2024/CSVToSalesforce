@@ -410,6 +410,7 @@ app.get("/fetch-account-notes", async (req, res) => {
 });
 app.get("/fetch-opportunity-notes", async (req, res) => {
   const folderPath = path.join(__dirname, "files", "Opportunity+Notes+Documents");
+  const timestamp = new Date().toISOString();
 
   try {
     if (!fs.existsSync(folderPath)) {
@@ -454,7 +455,7 @@ app.get("/fetch-opportunity-notes", async (req, res) => {
         console.log(`Found ${innerFiles.length} files inside ${folder}`);
 
         let uploadedFileIds = [];
-   
+
         for (const innerFile of innerFiles) {
           const innerFilePath = path.join(fullPath, innerFile);
           if (!fs.statSync(innerFilePath).isFile()) continue;
@@ -466,7 +467,7 @@ app.get("/fetch-opportunity-notes", async (req, res) => {
             console.log("Processing Note:", noteContent);
 
             // Add a bold prefix to the note content
-            const noteContentWithPrefix = `**Note** - ${noteContent}`;
+            const noteContentWithPrefix = `**${timestamp}** - **Note** - ${noteContent}`;
 
             // Create a note in HubSpot
             try {
@@ -474,6 +475,7 @@ app.get("/fetch-opportunity-notes", async (req, res) => {
                 "https://api.hubapi.com/crm/v3/objects/notes",
                 {
                   properties: {
+                    "hs_timestamp": new Date().getTime(),
                     hs_note_body: noteContentWithPrefix,
                   },
                   associations: [
@@ -496,38 +498,60 @@ app.get("/fetch-opportunity-notes", async (req, res) => {
             } catch (noteError) {
               console.error("Error creating note:", noteError.response?.data || noteError.message);
             }
-          }
-           else {
-            const allowedExts = [".pdf", ".jpg", ".png", ".csv"];
-            if (allowedExts.includes(fileExt)) {
-              console.log("Uploading attachment to HubSpot:", innerFile);
-              const FormData = require("form-data");
-              const form = new FormData();
-              const buffer = fs.createReadStream(innerFilePath);
+          } else if ([".pdf", ".jpg", ".png", ".csv"].includes(fileExt)) {
+            console.log("Uploading attachment to HubSpot:", innerFile);
+            const FormData = require("form-data");
+            const form = new FormData();
+            const buffer = fs.createReadStream(innerFilePath);
 
-              form.append("file", buffer, innerFile);
-              form.append("options", JSON.stringify({ access: "PRIVATE" }));
-              form.append("folderPath", "/");
+            form.append("file", buffer, innerFile);
+            form.append("options", JSON.stringify({ access: "PRIVATE" }));
+            form.append("folderPath", "/");
 
+            try {
+              const uploadResponse = await axios.post(
+                `https://api.hubapi.com/files/v3/files`,
+                form,
+                {
+                  headers: {
+                    Authorization: `Bearer ${DESTINATION_ACCESS_TOKEN}`,
+                    ...form.getHeaders(),
+                  },
+                }
+              );
+              const uploadedFileId = uploadResponse.data.id;
+              console.log("Attachment uploaded to HubSpot | File ID:", uploadedFileId);
               try {
-                const uploadResponse = await axios.post(
-                  `https://api.hubapi.com/files/v3/files`,
-                  form,
+                const noteResponse = await axios.post(
+                  "https://api.hubapi.com/crm/v3/objects/notes",
+                  {
+                    properties: {
+                      "hs_timestamp": "2021-11-12T15:48:22Z",
+                      hs_note_body: `Attached file: [View File](https://app.hubspot.com/files/${uploadedFileId})`,
+                      
+                    },
+                    associations: [
+                      {
+                        to: { id: ObjectId },
+                        types: [{ associationCategory: "HUBSPOT_DEFINED", associationTypeId: 214 }],
+                      },
+                    ],
+                  },
                   {
                     headers: {
                       Authorization: `Bearer ${DESTINATION_ACCESS_TOKEN}`,
-                      ...form.getHeaders(),
+                      "Content-Type": "application/json",
                     },
                   }
                 );
-                const uploadedFileId = uploadResponse.data.id;
-                console.log("Attachment uploaded to HubSpot | File ID:", uploadedFileId);
 
-                uploadedFileIds.push(uploadedFileId);
+                // uploadedFileIds.push(uploadedFileId);
 
               } catch (apiError) {
                 console.error("HubSpot API Error:", apiError.response?.data || apiError.message);
               }
+            } catch (error) {
+              console.error("Error uploading attachment:", error.message);
             }
           }
         }
