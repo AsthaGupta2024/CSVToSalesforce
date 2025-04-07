@@ -10,13 +10,15 @@ const FormData = require("form-data");
 async function readDataFromJson(filePath, limit = 5) {
   try {
     const rawData = fs.readFileSync(filePath, "utf8"); // Read the file as a string
-    const jsonData = JSON.parse(rawData); // Convert string to JSON
-
+    // console.log("rawData", rawData);
+    const jsonData = JSON.parse(rawData).slice(0, limit); // Convert string to JSON and limit the size
+    console.log("jsonData", jsonData);
     if (!Array.isArray(jsonData)) {
       throw new Error("Invalid JSON format: Expected an array");
     }
-
+    console.log("hii")
     const limitedData = jsonData.slice(0, limit); // Extract only `limit` items
+    // console.log("limitedData", limitedData);
     return limitedData;
   } catch (error) {
     console.error("Error reading contacts file:", error.message);
@@ -26,7 +28,8 @@ async function readDataFromJson(filePath, limit = 5) {
 const syncContactData = async (datas) => {
   const processedContacts = [];
   for (const data of datas) {
-    const existingContactId = await searchContactInHubSpot(data.Email);
+    console.lod("data",data);
+    const existingContactId = await searchContactInHubSpot(data.Email,data.Name);
     const contactData = {
       properties: {
         sf_lead_owner: data?.OwnerId,
@@ -78,23 +81,27 @@ const syncContactData = async (datas) => {
 
       }
     };
-    console.log("contactData", contactData);
+    // console.log("contactData", contactData);
     const contactRecordId = await updateOrCreateData('contact', existingContactId, contactData);
-    if (contactRecordId) {
-      console.log("contactRecordId", contactRecordId);
-      console.log("data.Account__c", data.Account__c);
-      // await ContactAssociation(contactRecordId, data.Account__c);
-      // await processEmailThreads(contactRecordId, 'contacts', 'test-leads');
-      await processCalls(contactRecordId, 'contacts', 'test-recordings');
-    }
+    // if (contactRecordId) {
+    //   // console.log("contactRecordId", contactRecordId);
+    //   // console.log("data.Account__c", data.Account__c);
+    //   await ContactAssociation(contactRecordId, data.Account__c);
+    //   // await processEmailThreads(contactRecordId, 'contacts', 'test-leads');
+    //   await processCalls(contactRecordId, 'contacts', 'test-recordings');
+    // }
 
   }
 
 };
-const searchContactInHubSpot = async (email) => {
+const searchContactInHubSpot = async (email,name) => {
   const filters = {
     filterGroups: [
       {
+        filters: [
+          { propertyName: "firstname", operator: "EQ", value: name.split(' ')[0] },
+          { propertyName: "lastname", operator: "EQ", value: name.split(' ')[1] },
+        ],
         filters: [{ propertyName: "email", operator: "EQ", value: email }],
       },
     ],

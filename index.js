@@ -28,7 +28,7 @@ app.get("/fetch-leads", async (req, res) => {
     const filePath = require("path").join(__dirname, "files", "Lead.json");
     // console.log("filePath:", filePath);
     const datas = await hsHelpers.readDataFromJson(filePath);  // Await the file reading function
-    // console.log("datas", datas);
+    console.log("datas", datas);
     const processedContacts1 = await hsHelpers.syncContactData(datas);
 
     // const getNotes = await processNotes(data,access_token, instance_url);
@@ -418,7 +418,7 @@ app.get("/fetch-opportunity-notes", async (req, res) => {
       return res.status(404).json({ error: "OpportunityChatter folder not found" });
     }
 
-    const folders = fs.readdirSync(folderPath).slice(0, 300);
+    const folders = fs.readdirSync(folderPath).slice(0, 200);
     for (const folder of folders) {
       const fullPath = path.join(folderPath, folder);
       if (!fs.statSync(fullPath).isDirectory()) {
@@ -454,60 +454,38 @@ app.get("/fetch-opportunity-notes", async (req, res) => {
         const innerFiles = fs.readdirSync(fullPath);
         console.log(`Found ${innerFiles.length} files inside ${folder}`);
 
-        let uploadedFileIds = [];
-
         for (const innerFile of innerFiles) {
           const innerFilePath = path.join(fullPath, innerFile);
           if (!fs.statSync(innerFilePath).isFile()) continue;
 
           const fileExt = path.extname(innerFilePath).toLowerCase();
-
-          if (fileExt === ".snote") {
-            const noteContent = fs.readFileSync(innerFilePath, "utf8").trim();
-            console.log("Processing Note:", noteContent);
-
-            // Add a bold prefix to the note content
-            const noteContentWithPrefix = `**${timestamp}** - **Note** - ${noteContent}`;
-
-            // Create a note in HubSpot
+          console.log("fileExt",fileExt);
+          if (fileExt === ".unknown") {
+            
+            console.log("unknown file detected:", innerFilePath);
+          
+            const newFileName = innerFile.replace(".unknown", ".mp3");
+            const newFullPath = path.join(fullPath, newFileName);
+          
             try {
-              const noteResponse = await axios.post(
-                "https://api.hubapi.com/crm/v3/objects/notes",
-                {
-                  properties: {
-                    "hs_timestamp": new Date().getTime(),
-                    hs_note_body: noteContentWithPrefix,
-                  },
-                  associations: [
-                    {
-                      to: { id: ObjectId },
-                      types: [{ associationCategory: "HUBSPOT_DEFINED", associationTypeId: 214 }],
-                    },
-                  ],
-                },
-                {
-                  headers: {
-                    Authorization: `Bearer ${DESTINATION_ACCESS_TOKEN}`,
-                    "Content-Type": "application/json",
-                  },
-                }
-              );
-
-              const noteId = noteResponse.data.id;
-              console.log(`Note added to HubSpot | Note ID: ${noteId}`);
-            } catch (noteError) {
-              console.error("Error creating note:", noteError.response?.data || noteError.message);
+              // Rename the file
+              fs.renameSync(innerFilePath, newFullPath);
+              console.log(`Renamed file from "${innerFile}" ➝ "${newFileName}"`);
+            } catch (renameErr) {
+              console.error("Error renaming .unknown file:", renameErr.message);
+              continue; // Skip to next file
             }
-          } else if ([".pdf", ".jpg", ".png", ".csv"].includes(fileExt)) {
-            console.log("Uploading attachment to HubSpot:", innerFile);
+          
             const FormData = require("form-data");
             const form = new FormData();
-            const buffer = fs.createReadStream(innerFilePath);
-
-            form.append("file", buffer, innerFile);
+          
+            const buffer = fs.createReadStream(newFullPath);
+            form.append("file", buffer, newFileName);
             form.append("options", JSON.stringify({ access: "PRIVATE" }));
             form.append("folderPath", "/");
-
+          
+            console.log(`Uploading file "${newFileName}" to HubSpot...`);
+          
             try {
               const uploadResponse = await axios.post(
                 `https://api.hubapi.com/files/v3/files`,
@@ -519,16 +497,20 @@ app.get("/fetch-opportunity-notes", async (req, res) => {
                   },
                 }
               );
+          
               const uploadedFileId = uploadResponse.data.id;
-              console.log("Attachment uploaded to HubSpot | File ID:", uploadedFileId);
+              console.log(`Upload successful | File ID: ${uploadedFileId}`);
+          
+              const noteContent = `Attached file: [View File](https://app-eu1.hubspot.com/files/145921696/?showDetails=${uploadedFileId})`;
+              console.log(`Creating note for uploaded file...`);
+          
               try {
-                const noteResponse = await axios.post(
+                await axios.post(
                   "https://api.hubapi.com/crm/v3/objects/notes",
                   {
                     properties: {
-                      "hs_timestamp": "2021-11-12T15:48:22Z",
-                      hs_note_body: `Attached file: [View File](https://app.hubspot.com/files/${uploadedFileId})`,
-                      
+                      hs_timestamp: new Date().toISOString(),
+                      hs_note_body: noteContent,
                     },
                     associations: [
                       {
@@ -544,22 +526,22 @@ app.get("/fetch-opportunity-notes", async (req, res) => {
                     },
                   }
                 );
-
-                // uploadedFileIds.push(uploadedFileId);
-
-              } catch (apiError) {
-                console.error("HubSpot API Error:", apiError.response?.data || apiError.message);
+                console.log(`Note created for file: ${newFileName}`);
+              } catch (noteError) {
+                console.error("Error creating note for file:", noteError.response?.data || noteError.message);
               }
-            } catch (error) {
-              console.error("Error uploading attachment:", error.message);
+          
+            } catch (uploadError) {
+              console.error("Error uploading .unknown file:", uploadError.message);
             }
           }
+          
         }
-      } catch (error) {
-        console.error("Error processing opportunity notes:", error.message);
-        return res.status(500).json({ error: "Failed to process opportunity notes" });
+      } catch (apiError) {
+        console.error("Error searching for deal in HubSpot:", apiError.response?.data || apiError.message);
       }
     }
+
     res.json({ message: "Successfully processed opportunity notes and documents" });
   } catch (error) {
     console.error("Error processing request:", error.message);
