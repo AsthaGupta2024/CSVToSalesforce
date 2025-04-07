@@ -460,6 +460,96 @@ app.get("/fetch-opportunity-notes", async (req, res) => {
 
           const fileExt = path.extname(innerFilePath).toLowerCase();
           console.log("fileExt",fileExt);
+          // if (fileExt === ".snote") {
+          //   const noteContent = fs.readFileSync(innerFilePath, "utf8").trim();
+          //   console.log("Processing Note:", noteContent);
+
+          //   // Add a bold prefix to the note content
+          //   const noteContentWithPrefix = `**${timestamp}** - **Note** - ${noteContent}`;
+
+          //   // Create a note in HubSpot
+          //   try {
+          //     const noteResponse = await axios.post(
+          //       "https://api.hubapi.com/crm/v3/objects/notes",
+          //       {
+          //         properties: {
+          //           "hs_timestamp": new Date().getTime(),
+          //           hs_note_body: noteContentWithPrefix,
+          //         },
+          //         associations: [
+          //           {
+          //             to: { id: ObjectId },
+          //             types: [{ associationCategory: "HUBSPOT_DEFINED", associationTypeId: 214 }],
+          //           },
+          //         ],
+          //       },
+          //       {
+          //         headers: {
+          //           Authorization: `Bearer ${DESTINATION_ACCESS_TOKEN}`,
+          //           "Content-Type": "application/json",
+          //         },
+          //       }
+          //     );
+
+          //     const noteId = noteResponse.data.id;
+          //     console.log(`Note added to HubSpot | Note ID: ${noteId}`);
+          //   } catch (noteError) {
+          //     console.error("Error creating note:", noteError.response?.data || noteError.message);
+          //   }
+          // } 
+          // else if ([".pdf", ".jpg", ".png", ".csv"].includes(fileExt)) {
+          //   console.log("Uploading attachment to HubSpot:", innerFile);
+          //   const FormData = require("form-data");
+          //   const form = new FormData();
+          //   const buffer = fs.createReadStream(innerFilePath);
+
+          //   form.append("file", buffer, innerFile);
+          //   form.append("options", JSON.stringify({ access: "PRIVATE" }));
+          //   form.append("folderPath", "/");
+
+          //   try {
+          //     const uploadResponse = await axios.post(
+          //       `https://api.hubapi.com/files/v3/files`,
+          //       form,
+          //       {
+          //         headers: {
+          //           Authorization: `Bearer ${DESTINATION_ACCESS_TOKEN}`,
+          //           ...form.getHeaders(),
+          //         },
+          //       }
+          //     );
+          //     const uploadedFileId = uploadResponse.data.id;
+          //     console.log("Attachment uploaded to HubSpot | File ID:", uploadedFileId);
+
+          //     try {
+          //       await axios.post(
+          //         "https://api.hubapi.com/crm/v3/objects/notes",
+          //         {
+          //           properties: {
+          //             hs_timestamp: new Date().toISOString(),
+          //             hs_note_body: `Attached file: [View File](https://app.hubspot.com/files/${uploadedFileId})`,
+          //           },
+          //           associations: [
+          //             {
+          //               to: { id: ObjectId },
+          //               types: [{ associationCategory: "HUBSPOT_DEFINED", associationTypeId: 214 }],
+          //             },
+          //           ],
+          //         },
+          //         {
+          //           headers: {
+          //             Authorization: `Bearer ${DESTINATION_ACCESS_TOKEN}`,
+          //             "Content-Type": "application/json",
+          //           },
+          //         }
+          //       );
+          //     } catch (apiError) {
+          //       console.error("HubSpot API Error:", apiError.response?.data || apiError.message);
+          //     }
+          //   } catch (error) {
+          //     console.error("Error uploading attachment:", error.message);
+          //   }
+          // } 
           if (fileExt === ".unknown") {
             
             console.log("unknown file detected:", innerFilePath);
